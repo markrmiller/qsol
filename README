@@ -1,0 +1,27 @@
+QSOL
+
+
+What is it?
+
+I wrote this query parser a few years back with the goal of creating something
+that could handle sentence/paragraph within n proximity searches, somewhat 
+mimic legacy query syntaxes, allow a mix of proximity and boolean clauses 
+(eg {mark | miller} 'within 3 words of' toast), and properly handle
+precedence of operators in a configurable manner. Qsol can be pretty powerful
+in that regard, but the code base is rather intense for a QueryParser and I 
+haven’t waded into it for some time now – other than for the occasional bug 
+fix. Most of the users of Qsol have rather niche requirements when it comes to 
+a QueryParser. Qsol is configurable up the wahzoo.
+
+I saw that someone ported part of Qsol to Solr a while back, but I’m not sure 
+how far along that patch is.
+
+
+Where is the Changes History?
+
+I wondered this myself. Then in the old svn repo I managed to dig qsol out of,
+I found the following commit comment:
+
+"This import replaces the old, the old having been defeated during the latter 
+part of its short life. The old changes are lost forever, but the new is
+better in any case."
