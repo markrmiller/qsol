@@ -127,7 +127,7 @@
 		<fail if="test.failed" message="JUnit tests failed. Check reports." />
 	</target>
 
-	<target name="jar" depends="compile,compile-tests" description="Creates a jar file">
+	<target name="jar" depends="compile" description="Creates a jar file">
 		<jar jarfile="${jar.name}">
 			<fileset dir="${build.classes.dir}" includes="**/*.class" />
 			<fileset dir="${build.classes.dir}" includes="**/*.properties" />
