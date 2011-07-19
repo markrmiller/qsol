@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project default="javadoc">
+    <target name="javadoc">
+        <javadoc access="public" author="true" classpath="C:\eclipse\plugins\org.junit_3.8.1\junit.jar;lib/lucene-spellchecker-2.1-dev.jar;lib/lucene-core-2.1-dev.jar" destdir="doc" nodeprecated="false" nodeprecatedlist="false" noindex="false" nonavbar="false" notree="false" packagenames="com.mhs.qsol,com.mhs.qsol.queryparser,com.mhs.qsol.proximity.distribute,com.mhs.qsol.visitor,com.mhs.qsol.proximity,com.mhs.qsol.syntaxtree,com.mhs.qsol.abstractnode,com.mhs.qsol.spans,com.mhs.qsol.filters" source="1.6" sourcepath="src/test;src/java" splitindex="true" use="true" version="true"/>
+    </target>
+</project>

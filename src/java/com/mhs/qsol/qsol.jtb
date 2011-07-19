@@ -1,0 +1,168 @@
+// Mark Miller 8/16/2006
+
+/**
+ * Copyright 2006 Mark Miller
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+options{  JAVA_UNICODE_ESCAPE = true;  STATIC = false;  IGNORE_CASE = true;  UNICODE_INPUT = true;  OUTPUT_DIRECTORY = "queryparser";
+ // DEBUG_PARSER = true;}PARSER_BEGIN(QueryParser)
+package com.mhs.qsol.queryparser;
+import java.util.Map;
+import com.mhs.qsol.QsolParser.Operator;
+public class QueryParser{
+	public void setOrderOfOps(Map opMap) {
+		token_source.orderOfOps = opMap;
+	}
+	
+	public void setHideOps(boolean hideOr, boolean hideAnd, boolean hideAndNot, boolean hideProximity) {
+		token_source.hideAnd = hideAnd;
+		token_source.hideOr = hideOr;
+		token_source.hideAndNot = hideAndNot;
+		token_source.hideProximity = hideProximity;
+	}
+	
+
+}
+PARSER_END(QueryParser)
+
+TOKEN_MGR_DECLS :
+{
+	Map orderOfOps;
+	boolean hideAnd;
+	boolean hideOr;
+	boolean hideAndNot;
+	boolean hideProximity;
+	
+
+}
+SKIP:/* WHITE SPACE */{  " "  | "\t"  | "\n"  | "\r"  | "\f"}
+
+<*> TOKEN: {
+  <#ESCAPED: "\\" ["*","?"] > 
+  |
+  <#NON_ESCAPED: ~["[", "]", "(", ")", " ", "*", "?"] >
+  | 
+  <#ANY_TOKEN: (<ESCAPED> | <NON_ESCAPED>)+ >
+}
+TOKEN:{
+
+  <AND: "&"> {
+  		if(hideAnd) {
+  			matchedToken.kind = SEARCHTOKEN;
+  			matchedToken.image = "\\" + matchedToken.image;
+  		} else {
+  
+  			matchedToken.kind =  (Integer)orderOfOps.get(Operator.AND);
+  		}
+  }
+  |
+  <OR: "|" | "||"> {
+  		if(hideOr) {
+  			matchedToken.kind = SEARCHTOKEN;
+  			matchedToken.image = "\\" + matchedToken.image;
+  		} else {
+  			if(matchedToken.image.length() == 1) {
+  				matchedToken.kind =  (Integer)orderOfOps.get(Operator.OR);
+  			} else {
+  			
+  				matchedToken.kind = OP4;
+  			}
+  		}
+  }
+  |
+  <ANDNOT: "!" | "!!"> {
+  		if(hideAndNot) {
+  			matchedToken.kind = SEARCHTOKEN;
+  			matchedToken.image = "\\" + matchedToken.image;
+  		} else {
+  			if(matchedToken.image.length() == 1) {
+  				matchedToken.kind =  (Integer)orderOfOps.get(Operator.ANDNOT);
+  			} else {
+  			
+  				matchedToken.kind = OP4;
+  			}
+  		}
+  }
+  |
+  <PROXIMITY: ("ord"|"pre")?"~"(<DIGIT>)*(["p", "s"])?> {
+  	  	if(hideProximity) {
+  	  		matchedToken.kind = SEARCHTOKEN;
+  	  		matchedToken.image = "\\" + matchedToken.image;
+  	  	} else {
+  	  	  	String text = matchedToken.image;
+  	  		matchedToken.kind = (Integer)orderOfOps.get(Operator.PROXIMITY);
+
+  	  	}
+  }
+  | <MATCHALL: "*:*" >
+  | <QUOTED: "\"" (~["\""])+ "\"" (":" (<DIGIT>)*)?>
+  | <BOOSTEDQUOTED: "\"" (~["\""])+ "\"" (":" (<DIGIT>)*)? "^" (<DIGIT>)+ ("." (<DIGIT>)+)?>
+  | <FUZZY: (~["[", "]", "(", ")", " ","`"])+ ("`")> // | <RANGE: (<SEARCHTOKEN>) (" ") ((("-") ("-")?) | "rng") (" ") (<SEARCHTOKEN>)>
+  | <RANGE: ((["[","{"])? (<SEARCHTOKEN>) ((" TO ") | (" RNG ") | (" rng ")) (<SEARCHTOKEN>)( ["]","}"])?)>
+  | <FIELDSTART: (~["(", ")", " "])+"("> {
+      String text = matchedToken.image;
+      matchedToken.image = text.substring(0, text.length()-1);
+  }
+  | <BOOSTEDSEARCHTOKEN: (<ANY_TOKEN>)+ "^" (<DIGIT>)+ ("." (<DIGIT>)+)?  >
+  | <SEARCHTOKEN: (<ANY_TOKEN>)+>
+  | <WILDCARD: (<ANY_TOKEN> | ["*" , "?"])+>
+  |
+  <OP1: "op1">  |
+   <OP2: "op2">
+ |
+  <OP3: "op3">
+ |
+  <OP4: "op4">
+  
+  | <#LETTER:
+      [
+       "\u0041"-"\u005a",
+       "\u0061"-"\u007a",
+       "\u00c0"-"\u00d6",
+       "\u00d8"-"\u00f6",
+       "\u00f8"-"\u00ff",
+       "\u0100"-"\u1fff"
+       ]>  | <#DIGIT:
+      [
+       "\u0030"-"\u0039",
+       "\u0660"-"\u0669",
+       "\u06f0"-"\u06f9",
+       "\u0966"-"\u096f",
+       "\u09e6"-"\u09ef",
+       "\u0a66"-"\u0a6f",
+       "\u0ae6"-"\u0aef",
+       "\u0b66"-"\u0b6f",
+       "\u0be7"-"\u0bef",
+       "\u0c66"-"\u0c6f",
+       "\u0ce6"-"\u0cef",
+       "\u0d66"-"\u0d6f",
+       "\u0e50"-"\u0e59",
+       "\u0ed0"-"\u0ed9",
+       "\u1040"-"\u1049"
+      ]>
+      
+}
+/************************************
+ * QSol Grammer
+ ************************************/
+ void Search():{}{  CheckOrd1Search()<EOF>}void CheckOrd1Search():{}{  CheckOrd2Search()(Ord1Search())?}void Ord1Search():{}{  <OP1>CheckOrd2Search()(Ord1Search())?}void CheckOrd2Search():{}{  CheckOrd3Search()(Ord2Search())?}void Ord2Search():{}{  <OP2>CheckOrd3Search()(Ord2Search())?}void CheckOrd3Search():{}{  CheckOrd4Search()(Ord3Search())?}void Ord3Search():{}{  <OP3>CheckOrd4Search()(Ord3Search())?}void CheckOrd4Search():{}{  BasicSearch()(Ord4Search())?}void Ord4Search():{}{
+  <OP4>BasicSearch()(Ord4Search())?}void FieldSearch():{}{  <FIELDSTART>CheckOrd1Search()")"}void SearchToken():{}{  <MATCHALL> | <QUOTED> | <BOOSTEDQUOTED> | <RANGE> | <WILDCARD> | <FUZZY> | <BOOSTEDSEARCHTOKEN> | <SEARCHTOKEN> }void ParenthesisSearch():{}{  "("CheckOrd1Search()")"}
+
+void BasicSearch():{}{
+  (BasicSearchType())+
+}
+void BasicSearchType():{}{
+    FieldSearch()  | SearchToken()  | ParenthesisSearch()}
+
+

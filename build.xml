@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project basedir="." default="jar" name="qsol">
+
+	
+	<target name="init" depends="">
+		<property name="src.dir" location="src/java" />
+		<property name="build.dir" location="bin" />
+		<property name="build.classes.dir" location="${build.dir}/classes" />
+		<property name="lib.dir" location="lib" />
+		<property name="etc.dir" value="./etc" />
+		<property name="jar.name" value="qsol.jar" />
+		<property name="javacc.dir" value="/home/mark/libs/javacc-4.0" />
+		<property name="jtb.jar" value="${basedir}/${etc.dir}/jtb132.jar" />
+		<property name="build.compiler" value="modern" />
+
+		<property name="test.src.dir" location="src//test" />
+		<property name="test.dir" location="${build.dir}/test" />
+		<property name="test.classes.dir" location="${test.dir}/classes" />
+		<property name="test.data.dir" location="${test.dir}/data" />
+		<property name="test.reports.dir" location="${test.dir}/reports" />
+
+		<property name="dist.dir" location="dist" />
+		<property name="doc.dir" location="doc" />
+
+		<path id="compile.classpath">
+			<fileset dir="${lib.dir}">
+				<include name="*.jar" />
+			</fileset>
+		</path>
+
+
+		<property name="junit.jar" location="C:/eclipse/plugins/org.junit_3.8.1/junit.jar" /> 
+
+		<!-- set junit.jar location, conditional on ant.home
+		<condition property="junit.jar" value="${ant.home}/lib/junit.jar">
+			<available file="${ant.home}/lib/junit.jar" />
+		</condition>
+		<property name="junit.jar" location="${ant.home}/../org.junit_3.8.1/junit.jar" />
+ 		-->
+
+		<path id="test.classpath">
+
+			<path refid="compile.classpath" />
+			<pathelement path="${junit.jar}" />
+			<pathelement path="${build.dir}/classes" />
+			<!--<pathelement path="${build.classes.dir}" />-->
+			<pathelement path="${test.classes.dir}" />
+		</path>
+
+	</target>
+	
+
+
+	<target name="clean" depends="init">
+		<delete dir="${build.dir}" includeEmptyDirs="true" />
+	</target>
+
+	<target name="prep" depends="init">
+		<mkdir dir="${build.dir}/classes" />
+		<mkdir dir="${test.dir}/classes" />
+
+	</target>
+
+	<target name="javaCC" depends="init">
+		<exec dir="src/java/com/mhs/qsol" executable="java">
+			<arg line="-jar ${jtb.jar} ${basedir}/src/java/com/mhs/qsol/qsol.jtb -p com.mhs.qsol" />
+
+		</exec>
+
+		<javacc target="src/java/com/mhs/qsol/jtb.out.jj" outputdirectory="src/java/com/mhs/qsol/queryparser" javacchome="${javacc.dir}" />
+	</target>
+
+	<target name="compile"  depends="prep">
+		<!-- Copy necessary resources -->
+		<copy todir="${build.dir}/classes" failonerror="true">
+			<fileset dir="${src.dir}" excludes="**/*.java, **/package.htm*" />
+		</copy>
+		<javac source="1.5" target="1.5" debug="true" deprecation="true" destdir="${build.dir}/classes">
+			<src path="${src.dir}" />
+			<classpath refid="compile.classpath" />
+		</javac>
+
+	</target>
+
+	<target name="compile-tests" depends="compile">
+		<javac source="1.5" debug="true" deprecation="true" destdir="${test.dir}/classes">
+			<src path="${test.src.dir}" />
+			<classpath refid="test.classpath" />
+		</javac>
+	</target>
+
+	<target name="test" depends="compile-tests" description="Compile and run JUnit tests">
+
+		<mkdir dir="${test.classes.dir}" />
+		<mkdir dir="${test.data.dir}" />
+		<mkdir dir="${test.reports.dir}" />
+
+		
+		<!-- Create a test JAR 
+		<jar jarfile="${build.dir}/${testjar.name}" basedir="${build.classes.dir}">
+			<manifest>
+				<attribute name="Main-Class" value="com.newsbank.save.sff.core.FilterRunner" />
+			</manifest>
+		</jar>-->
+
+		<!-- Copy necessary resources -->
+		<copy todir="${build.classes.dir}" failonerror="true">
+			<fileset dir="src/test" excludes="**/*.java, **/package.htm*" />
+		</copy>
+
+		<!-- Run the tests -->
+		<junit  fork="yes" errorProperty="test.failed" failureProperty="test.failed">
+			<classpath refid="test.classpath" />
+			<formatter type="xml" />
+			<batchtest todir="${test.data.dir}">
+				<fileset dir="${test.classes.dir}" includes="**/*Test.class" />
+			</batchtest>
+		</junit>
+
+		<junitreport todir="${test.data.dir}">
+			<fileset dir="${test.data.dir}" includes="TEST-*.xml" />
+			<report format="frames" todir="${test.reports.dir}" />
+		</junitreport>
+
+		<!-- Build fails if any of the unit tests fail -->
+		<fail if="test.failed" message="JUnit tests failed. Check reports." />
+	</target>
+
+	<target name="jar" depends="compile,compile-tests" description="Creates a jar file">
+		<jar jarfile="${jar.name}">
+			<fileset dir="${build.classes.dir}" includes="**/*.class" />
+			<fileset dir="${build.classes.dir}" includes="**/*.properties" />
+			<manifest>
+				<attribute name="Main-Class" value="com.mhs.qsol.QsolParser" />
+				<attribute name="Class-Path" value="lib/lucene-core-2.1-dev.jar" />
+				
+			</manifest>
+		</jar>
+	</target>
+
+	<target name="javadocs" depends="init" description="Generate Javadoc">
+		<mkdir dir="${doc.dir}" />
+		<ant antfile="javadoc.xml" />
+	</target>
+
+</project>
