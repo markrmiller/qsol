@@ -15,6 +15,30 @@
  */
 package com.mhs.qsol.proximity;
 
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.Token;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.spans.SpanNearQuery;
+import org.apache.lucene.search.spans.SpanOrQuery;
+import org.apache.lucene.search.spans.SpanQuery;
+import org.apache.lucene.search.spans.SpanTermQuery;
+
 import com.mhs.qsol.QsolParseException;
 import com.mhs.qsol.QsolParser.Operator;
 import com.mhs.qsol.QsolToQueryVisitor;
@@ -46,29 +70,6 @@ import com.mhs.qsol.syntaxtree.ParenthesisSearch;
 import com.mhs.qsol.syntaxtree.Search;
 import com.mhs.qsol.syntaxtree.SearchToken;
 import com.mhs.qsol.visitor.GJDepthFirst;
-
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.Token;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.search.BooleanClause.Occur;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.spans.SpanNearQuery;
-import org.apache.lucene.search.spans.SpanOrQuery;
-import org.apache.lucene.search.spans.SpanQuery;
-import org.apache.lucene.search.spans.SpanTermQuery;
-
-import java.io.IOException;
-import java.io.StringReader;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class ProximityVisitor extends GJDepthFirst<Query, Query> {
   private static final Pattern BOOST_EXTRACTOR = Pattern
@@ -463,6 +464,8 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
     token = removeEscapeChars(token);
 
     TokenStream source = analyzer.tokenStream(field, new StringReader(token));
+    CharTermAttribute charTermAtrib = source.getAttribute(CharTermAttribute.class);
+    OffsetAttribute offsetAtrib = source.getAttribute(OffsetAttribute.class);
     ArrayList<Token> v = new ArrayList<Token>();
     Token t;
     int positionCount = 0;
@@ -470,7 +473,10 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
 
     while (true) {
       try {
-        t = source.next();
+        if (!source.incrementToken()) {
+          break;
+        }
+        t = new Token(charTermAtrib.buffer(), 0, charTermAtrib.length(), offsetAtrib.startOffset(), offsetAtrib.endOffset());
       } catch (IOException e) {
         t = null;
       }
@@ -498,7 +504,7 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
       return null;
     } else if (v.size() == 1) {
       t = v.get(0);
-      SpanTermQuery stq = new SpanTermQuery(new Term(field, t.termText()));
+      SpanTermQuery stq = new SpanTermQuery(new Term(field, new String(t.buffer(), 0, t.length())));
       stq.setBoost(this.boost);
       return stq;
     } else {
@@ -522,8 +528,8 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
             // TODO: handle this?
             // if (t.getPositionIncrement() == 0) {
             // }
-            clauses.set(i, new SpanTermQuery(new Term(field, v.get(i)
-                .termText())));
+            Token t2 = v.get(i);
+            clauses.set(i, new SpanTermQuery(new Term(field, new String(t2.buffer(), 0, t2.length()))));
           }
 
           SpanNearQuery query = new SpanNearQuery((SpanQuery[]) clauses
@@ -533,9 +539,10 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
         }
       } else {
         SpanTermQuery[] clauses = new SpanTermQuery[v.size()];
-
+     
         for (int i = 0; i < v.size(); i++) {
-          clauses[i] = new SpanTermQuery(new Term(field, v.get(i).termText()));
+          Token t2 = v.get(i);
+          clauses[i] = new SpanTermQuery(new Term(field, new String(t2.buffer(), 0, t2.length())));
         }
 
         SpanNearQuery query = new SpanNearQuery(clauses, slop, true);

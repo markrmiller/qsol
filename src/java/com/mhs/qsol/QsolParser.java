@@ -15,22 +15,11 @@
  */
 package com.mhs.qsol;
 
-import com.mhs.qsol.queryparser.QueryParser;
-import com.mhs.qsol.queryparser.QueryParserConstants;
-import com.mhs.qsol.syntaxtree.Node;
-
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.standard.StandardAnalyzer;
-import org.apache.lucene.queryParser.ParseException;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.store.Directory;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.StringReader;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -40,6 +29,16 @@ import java.util.Map;
 import java.util.Set;
 import java.util.logging.LogManager;
 import java.util.regex.Pattern;
+
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.Version;
+
+import com.mhs.qsol.queryparser.QueryParser;
+import com.mhs.qsol.queryparser.QueryParserConstants;
+import com.mhs.qsol.syntaxtree.Node;
 
 /**
  * Converts any valid Qsol syntax into an Apache Lucene Query object.
@@ -185,7 +184,7 @@ public class QsolParser {
       Query result = null;
 
       try {
-        result = parser.parse("allFields", query, new StandardAnalyzer());
+        result = parser.parse("allFields", query, new StandardAnalyzer(Version.LUCENE_33));
       } catch (QsolSyntaxException e) {
         System.out.println("syntax exception:");
         e.printStackTrace();

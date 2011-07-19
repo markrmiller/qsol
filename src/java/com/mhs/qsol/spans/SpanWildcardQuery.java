@@ -15,10 +15,15 @@ package com.mhs.qsol.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.ConstantScoreQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
@@ -26,11 +31,6 @@ import org.apache.lucene.search.spans.SpanOrQuery;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.search.spans.Spans;
-
-import java.io.IOException;
-
-import java.util.ArrayList;
-import java.util.Collection;
 
 public class SpanWildcardQuery extends SpanQuery {
   private Term term;
@@ -44,11 +44,10 @@ public class SpanWildcardQuery extends SpanQuery {
   }
 
   public Query rewrite(IndexReader reader) throws IOException {
-    System.out.println("term:" + term );
     WildcardQuery wildQuery = new WildcardQuery(term);
-
+    wildQuery.setRewriteMethod(WildcardQuery.CONSTANT_SCORE_BOOLEAN_QUERY_REWRITE);
     BooleanQuery bq = null;
-    bq = (BooleanQuery) wildQuery.rewrite(reader);
+    bq = (BooleanQuery) ((ConstantScoreQuery) wildQuery.rewrite(reader)).getQuery();
     
     BooleanClause[] clauses = bq.getClauses();
     SpanQuery[] sqs = new SpanQuery[clauses.length];

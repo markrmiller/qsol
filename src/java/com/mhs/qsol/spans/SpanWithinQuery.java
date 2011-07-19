@@ -24,6 +24,7 @@ import org.apache.lucene.util.ToStringUtils;
 
 import java.io.IOException;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Set;
 
@@ -71,16 +72,6 @@ public class SpanWithinQuery extends SpanQuery {
 
   public String getField() {
     return include.getField();
-  }
-
-  /**
-   * Returns a collection of all terms matched by this query.
-   * 
-   * @deprecated use extractTerms instead
-   * @see #extractTerms(Set)
-   */
-  public Collection getTerms() {
-    return include.getTerms();
   }
 
   public void extractTerms(Set terms) {
@@ -194,6 +185,22 @@ public class SpanWithinQuery extends SpanQuery {
 
       public int end() {
         return includeSpans.end();
+      }
+      
+      // TODO: Remove warning after API has been finalized
+      @Override
+      public Collection<byte[]> getPayload() throws IOException {
+        ArrayList<byte[]> result = null;
+        if (includeSpans.isPayloadAvailable()) {
+          result = new ArrayList<byte[]>(includeSpans.getPayload());
+        }
+        return result;
+      }
+
+      // TODO: Remove warning after API has been finalized
+      @Override
+      public boolean isPayloadAvailable() {
+        return includeSpans.isPayloadAvailable();
       }
 
       public String toString() {

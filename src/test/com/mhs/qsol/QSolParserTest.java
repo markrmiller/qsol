@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import junit.framework.TestCase;
@@ -22,16 +21,18 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriter.MaxFieldLength;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.Hits;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.spans.SpanNearQuery;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.search.spell.LuceneDictionary;
 import org.apache.lucene.search.spell.SpellChecker;
 import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.util.Version;
 
 import com.mhs.qsol.QsolParser.Operator;
 
@@ -44,7 +45,7 @@ public class QSolParserTest extends TestCase {
   String expected = null;
   QsolParser parser = ParserFactory.getInstance(new QsolConfiguration())
       .getParser(false);
-  private Analyzer analyzer = new StandardAnalyzer();
+  private Analyzer analyzer = new StandardAnalyzer(Version.LUCENE_33);
 
   public String parse(String query) {
     parser.markDateField("date");
@@ -229,8 +230,14 @@ public class QSolParserTest extends TestCase {
   }
 
   public void testFixThese() {
+    // this should work, but currently does not
     example = "the ! mark";
-    expected = "allFields:{83 TO 85}";
+    expected = "";
+    assertEquals(expected, parse(example));
+    
+    // this should work, but currently does not
+    example = "total(bob";
+    expected = "allFields:bob";
     assertEquals(expected, parse(example));
   }
 
@@ -253,14 +260,14 @@ public class QSolParserTest extends TestCase {
     directory = new RAMDirectory();
     parser.setSentenceMarker("sent");
 
-    IndexWriter writer = new IndexWriter(directory, analyzer, true);
+    IndexWriter writer = new IndexWriter(directory, analyzer, true, MaxFieldLength.UNLIMITED);
 
     Document doc = new Document();
     doc
         .add(new Field(
             "allFields",
             "only the lonely shal break make it to the great sent almighty the receiver be sent It is the way of the one and only sent break if you are wise and practice hard break good results may come sent for you",
-            Field.Store.YES, Field.Index.TOKENIZED));
+            Field.Store.YES, Field.Index.ANALYZED));
 
     writer.addDocument(doc);
 
@@ -271,34 +278,34 @@ public class QSolParserTest extends TestCase {
     IndexSearcher searcher = new IndexSearcher(ir);
     String query = "shal ~1s almighty";
 
-    Hits hits = searcher.search(parse(parser, query));
-    assertEquals(1, hits.length());
+    TopDocs hits = searcher.search(parse(parser, query), 1000);
+    assertEquals(1, hits.totalHits);
 
     parser.setFieldBreakMarker("break");
 
     query = "shal ~1s almighty";
-    hits = searcher.search(parse(parser, query));
-    assertEquals(0, hits.length());
+    hits = searcher.search(parse(parser, query), 1000);
+    assertEquals(0, hits.totalHits);
 
     query = "only ~9s results";
-    hits = searcher.search(parse(parser, query));
-    assertEquals(0, hits.length());
+    hits = searcher.search(parse(parser, query), 1000);
+    assertEquals(0, hits.totalHits);
 
     query = "good ~9s lonely";
-    hits = searcher.search(parse(parser, query));
-    assertEquals(0, hits.length());
+    hits = searcher.search(parse(parser, query), 1000);
+    assertEquals(0, hits.totalHits);
 
     query = "great ~2s way";
-    hits = searcher.search(parse(parser, query));
-    assertEquals(1, hits.length());
+    hits = searcher.search(parse(parser, query), 1000);
+    assertEquals(1, hits.totalHits);
 
     query = "great ~1s way";
-    hits = searcher.search(parse(parser, query));
-    assertEquals(0, hits.length());
+    hits = searcher.search(parse(parser, query), 1000);
+    assertEquals(0, hits.totalHits);
 
     query = "great ~3s way";
-    hits = searcher.search(parse(parser, query));
-    assertEquals(1, hits.length());
+    hits = searcher.search(parse(parser, query), 1000);
+    assertEquals(1, hits.totalHits);
 
   }
 
@@ -307,11 +314,11 @@ public class QSolParserTest extends TestCase {
     RAMDirectory directory;
     directory = new RAMDirectory();
 
-    IndexWriter writer = new IndexWriter(directory, analyzer, true);
+    IndexWriter writer = new IndexWriter(directory, analyzer, true, MaxFieldLength.UNLIMITED);
 
     Document doc = new Document();
     doc.add(new Field("allFields", "pH test block 7.334", Field.Store.YES,
-        Field.Index.TOKENIZED));
+        Field.Index.ANALYZED));
 
     writer.addDocument(doc);
 
@@ -324,8 +331,8 @@ public class QSolParserTest extends TestCase {
 
     Query q = parse(parser, query);
     System.out.println("q:" + q);
-    Hits hits = searcher.search(q);
-    assertEquals(1, hits.length());
+    TopDocs hits = searcher.search(q, 1000);
+    assertEquals(1, hits.totalHits);
 
   }
 
@@ -336,14 +343,14 @@ public class QSolParserTest extends TestCase {
     directory = new RAMDirectory();
     parser.setSentenceMarker("sent");
 
-    IndexWriter writer = new IndexWriter(directory, analyzer, true);
+    IndexWriter writer = new IndexWriter(directory, analyzer, true, MaxFieldLength.UNLIMITED);
 
     Document doc = new Document();
     doc
         .add(new Field(
             "allFields",
             "only the lonely shal break make it to the great sent almighty the receiver be sent It is the way of the one and only sent break if you are wise and practice hard break good results may come sent for you",
-            Field.Store.YES, Field.Index.TOKENIZED));
+            Field.Store.YES, Field.Index.ANALYZED));
 
     writer.addDocument(doc);
 
@@ -357,7 +364,7 @@ public class QSolParserTest extends TestCase {
         new SpanTermQuery(new Term(FIELD_NAME, "shal")),
         new SpanTermQuery(new Term(FIELD_NAME, "make")),
         new SpanTermQuery(new Term(FIELD_NAME, "sent")) }, 6, false);
-    Hits hits = searcher.search(q);
+    TopDocs hits = searcher.search(q, 1000);
 
   }
 
@@ -365,14 +372,14 @@ public class QSolParserTest extends TestCase {
     RAMDirectory directory;
     directory = new RAMDirectory();
 
-    IndexWriter writer = new IndexWriter(directory, analyzer, true);
+    IndexWriter writer = new IndexWriter(directory, analyzer, true, MaxFieldLength.UNLIMITED);
 
     Document doc = new Document();
     doc
         .add(new Field(
             "allFields",
             "the brown fox�jumps \"over the lazy horse horse dog\" jhjkh jhjkh�hjhjh�f�jumps horse horse his own quick horse ",
-            Field.Store.YES, Field.Index.TOKENIZED));
+            Field.Store.YES, Field.Index.ANALYZED));
 
     writer.addDocument(doc);
 
@@ -381,25 +388,25 @@ public class QSolParserTest extends TestCase {
         .add(new Field(
             "allFields",
             "the brown fox </p> <p> jumps �����</p> fox ������</p> <p> jumps his own horse horse quick horse </p>",
-            Field.Store.YES, Field.Index.TOKENIZED));
+            Field.Store.YES, Field.Index.ANALYZED));
     writer.addDocument(doc);
     doc
         .add(new Field(
             "allFields",
             "the brown fox </p> <p> jumps �����</p> fox ������</p> <p> jumps his own horse horse quick horse </p>",
-            Field.Store.YES, Field.Index.TOKENIZED));
+            Field.Store.YES, Field.Index.ANALYZED));
     writer.addDocument(doc);
     doc
         .add(new Field(
             "allFields",
             "the brown fox </p> <p> jumps �����</p> fox ������</p> <p> jumps motherfracker his own horse horse quick horse </p>",
-            Field.Store.YES, Field.Index.TOKENIZED));
+            Field.Store.YES, Field.Index.ANALYZED));
     writer.addDocument(doc);
     doc
         .add(new Field(
             "allFields",
             "the brown fox </p> <p> jumps �����</p> fox ������</p> <p> jumps his own horse horse jumper jumping jumbo quick horse </p>",
-            Field.Store.YES, Field.Index.TOKENIZED));
+            Field.Store.YES, Field.Index.ANALYZED));
     writer.addDocument(doc);
 
     writer.close();
@@ -407,12 +414,12 @@ public class QSolParserTest extends TestCase {
     IndexReader ir = IndexReader.open(directory);
 
     example = "ho?se";
-    expected = "allFields:horse";
+    expected = "ConstantScore(allFields:ho?se)";
 
     assertEquals(expected, parse(parser, example).rewrite(ir).toString());
 
     example = "ju*";
-    expected = "allFields:jumbo allFields:jumper allFields:jumping allFields:jumps";
+    expected = "ConstantScore(allFields:ju*)";
 
     assertEquals(expected, parse(parser, example).rewrite(ir).toString());
 
@@ -427,7 +434,7 @@ public class QSolParserTest extends TestCase {
     assertEquals(expected, parse(parser, example).rewrite(ir).toString());
 
     example = "*ox";
-    expected = "allFields:fox";
+    expected = "ConstantScore(allFields:*ox)";
 
     assertEquals(expected, parse(parser, example).rewrite(ir).toString());
   }
@@ -436,14 +443,14 @@ public class QSolParserTest extends TestCase {
     RAMDirectory directory;
     directory = new RAMDirectory();
 
-    IndexWriter writer = new IndexWriter(directory, analyzer, true);
+    IndexWriter writer = new IndexWriter(directory, analyzer, true, MaxFieldLength.UNLIMITED);
 
     Document doc = new Document();
     doc
         .add(new Field(
             "allFields",
             "the brown fox�jumps \"over the lazy horse horse dog\" jhjkh jhjkh�hjhjh�f�jumps horse horse his own quick horse ",
-            Field.Store.YES, Field.Index.TOKENIZED));
+            Field.Store.YES, Field.Index.ANALYZED));
 
     writer.addDocument(doc);
 
@@ -451,26 +458,26 @@ public class QSolParserTest extends TestCase {
     doc
         .add(new Field(
             "allFields",
-            "the brown fox </p> <p> jumps �����</p> fox ������</p> <p> jumps his own horse horse quick horse </p>",
-            Field.Store.YES, Field.Index.TOKENIZED));
+            "the brown fox </p> <p> jumps �����</p> fox ������</p> <p> jumps his own horse horse quick horse dog </p>",
+            Field.Store.YES, Field.Index.ANALYZED));
     writer.addDocument(doc);
     doc
         .add(new Field(
             "allFields",
             "the brown fox </p> <p> jumps �����</p> fox ������</p> <p> jumps his own horse horse quick horse </p>",
-            Field.Store.YES, Field.Index.TOKENIZED));
+            Field.Store.YES, Field.Index.ANALYZED));
     writer.addDocument(doc);
     doc
         .add(new Field(
             "allFields",
             "the brown fox </p> <p> jumps �����</p> fox ������</p> <p> jumps motherfracker his own horse horse quick horse </p>",
-            Field.Store.YES, Field.Index.TOKENIZED));
+            Field.Store.YES, Field.Index.ANALYZED));
     writer.addDocument(doc);
     doc
         .add(new Field(
             "allFields",
             "the brown fox </p> <p> jumps �����</p> fox ������</p> <p> jumps his own horse horse quick horse </p>",
-            Field.Store.YES, Field.Index.TOKENIZED));
+            Field.Store.YES, Field.Index.ANALYZED));
     writer.addDocument(doc);
 
     writer.close();
@@ -487,12 +494,17 @@ public class QSolParserTest extends TestCase {
     assertEquals(expected, parser.getSuggestedSearch());
 
     example = "horke motherfroker (toad)";
-    expected = "horse motherfracker (own)";
+    expected = "horse motherfracker (dog)";
     parse(example);
     assertEquals(expected, parser.getSuggestedSearch());
 
     example = "field(mars life) motherfroker field2(bear) | (toad)";
-    expected = "field(lazy lazy) motherfracker field2(over) | (own)";
+    expected = "field(horse his) motherfracker field2(over) | (dog)";
+    parse(example);
+    assertEquals(expected, parser.getSuggestedSearch());
+    
+    example = "field(lazy life) motherfroker field2(bear) | (dog)";
+    expected = "field(lazy his) motherfracker field2(over) | (dog)";
     parse(example);
     assertEquals(expected, parser.getSuggestedSearch());
   }
@@ -587,12 +599,6 @@ public class QSolParserTest extends TestCase {
     expected = "wc:{000006 TO 000010}";
     assertEquals(expected, parse(example));
 
-  }
-
-  public void testBadSyntax() {
-    example = "total(bob";
-    expected = "allFields:bob";
-    assertEquals(expected, parse(example));
   }
 
   public void testGeneralQueries() throws IOException {
@@ -914,7 +920,7 @@ public class QSolParserTest extends TestCase {
 
     // AnalyzerUtils.displayTokensWithFullDetails(analyzer, "m\\&m's");
     example = "m\\&m's";
-    expected = "spanNear([allFields:m&m, allFields:s], 0, true)";
+    expected = "spanNear([allFields:m, allFields:m's], 0, true)";
     assertEquals(expected, parse(example));
   }
 
@@ -946,15 +952,15 @@ public class QSolParserTest extends TestCase {
     assertEquals(expected, parse(example));
 
     example = "date(> 12/31/02)";
-    expected = "ConstantScore(date:[20021231-})";
+    expected = "ConstantScore(date:[20021231 TO *})";
     assertEquals(expected, parse(example));
 
     example = "date(< 03/23/2004)";
-    expected = "ConstantScore(date:{-20040323])";
+    expected = "ConstantScore(date:{* TO 20040323])";
     assertEquals(expected, parse(example));
 
     example = "date(3/23/2004 - 6/34/02)";
-    expected = "ConstantScore(date:[20040323-20020704])";
+    expected = "ConstantScore(date:[20040323 TO 20020704])";
     assertEquals(expected, parse(example));
 
     example = "date(6/34/02) | mark";
@@ -1028,7 +1034,7 @@ public class QSolParserTest extends TestCase {
     assertEquals(expected, parse(example));
 
     example = "*:* ! mark";
-    expected = "+MatchAllDocsQuery -allFields:mark";
+    expected = "+*:* -allFields:mark";
     assertEquals(expected, parse(example));
 
   }

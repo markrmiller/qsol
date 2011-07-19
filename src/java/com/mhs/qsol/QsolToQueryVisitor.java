@@ -32,16 +32,18 @@ import java.util.regex.Pattern;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.ConstantScoreRangeQuery;
 import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.search.WildcardQuery;
-import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.spans.SpanNearQuery;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
@@ -437,7 +439,7 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
           term2 = term2.toLowerCase();
         }
 
-        return new ConstantScoreRangeQuery(field, term1, term2, inclusive1,
+        return new TermRangeQuery(field, term1, term2, inclusive1,
             inclusive2);
       } else {
         throw new RuntimeException(
@@ -664,9 +666,15 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
     int positionCount = 0;
     boolean severalTokensAtSamePosition = false;
 
+    CharTermAttribute charTermAtrib = source.getAttribute(CharTermAttribute.class);
+    OffsetAttribute offsetAtrib = source.getAttribute(OffsetAttribute.class);
+    
     while (true) {
       try {
-        t = source.next();
+        if (!source.incrementToken()) {
+          break;
+        }
+        t = new Token(charTermAtrib.buffer(), 0, charTermAtrib.length(), offsetAtrib.startOffset(), offsetAtrib.endOffset());
       } catch (IOException e) {
         t = null;
       }
@@ -697,7 +705,7 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
 
       t = v.get(0);
 
-      TermQuery termQuery = new TermQuery(new Term(field, t.termText()));
+      TermQuery termQuery = new TermQuery(new Term(field, new String(t.buffer(), 0, t.length())));
       termQuery.setBoost(this.boost);
 
       return termQuery;
@@ -711,7 +719,7 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
             t = v.get(i);
 
             TermQuery currentQuery = new TermQuery(
-                new Term(field, t.termText()));
+                new Term(field, new String(t.buffer(), 0, t.length())));
             currentQuery.setBoost(this.boost);
 
             q.add(currentQuery, BooleanClause.Occur.SHOULD);
@@ -725,8 +733,8 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
             // TODO: handle this?
             // if (t.getPositionIncrement() == 0) {
             // }
-            SpanQuery termQuery = new SpanTermQuery(new Term(field, v.get(i)
-                .termText()));
+            Token t2 = v.get(i);
+            SpanQuery termQuery = new SpanTermQuery(new Term(field, new String(t2.buffer(), 0, t2.length())));
             termQuery.setBoost(this.boost);
             clauses.set(i, termQuery);
           }
@@ -740,8 +748,8 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
         SpanTermQuery[] clauses = new SpanTermQuery[v.size()];
 
         for (int i = 0; i < v.size(); i++) {
-          SpanTermQuery spanQuery = new SpanTermQuery(new Term(field, v.get(i)
-              .termText()));
+          Token t2 = v.get(i);
+          SpanTermQuery spanQuery = new SpanTermQuery(new Term(field, new String(t2.buffer(), 0, t2.length())));
           spanQuery.setBoost(boost);
           clauses[i] = spanQuery;
         }

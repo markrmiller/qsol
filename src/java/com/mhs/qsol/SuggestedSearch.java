@@ -2,6 +2,7 @@ package com.mhs.qsol;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.search.spell.SpellChecker;
 import org.apache.lucene.store.Directory;
 
@@ -94,12 +95,13 @@ public class SuggestedSearch {
       return "";
     }
     TokenStream source = analyzer.tokenStream("", new StringReader(term));
+    CharTermAttribute charTermAtrib = source.getAttribute(CharTermAttribute.class);
     String anaTerm = null;
 
     try {
-      anaTerm = source.next().termText();
-
-      if (source.next() != null) {
+      source.incrementToken();
+      anaTerm = charTermAtrib.toString();
+      if (source.incrementToken()) {
         return term;
       }
     } catch (IOException e2) {

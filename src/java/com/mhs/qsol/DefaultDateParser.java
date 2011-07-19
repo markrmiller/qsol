@@ -21,8 +21,8 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.ConstantScoreQuery;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.RangeFilter;
 import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.TermRangeFilter;
 
 import java.text.DateFormat;
 import java.text.ParseException;
@@ -53,7 +53,7 @@ public class DefaultDateParser implements DateParser {
         throw new QsolParseException(e);
       }
 
-      final Filter filter = RangeFilter.Less(field, DateTools.dateToString(
+      final Filter filter = TermRangeFilter.Less(field, DateTools.dateToString(
           date1, Resolution.DAY));
 
       return new ConstantScoreQuery(filter);
@@ -66,7 +66,7 @@ public class DefaultDateParser implements DateParser {
         throw new QsolParseException("Could not parse date", e);
       }
 
-      final Filter filter = RangeFilter.More(field, DateTools.dateToString(
+      final Filter filter = TermRangeFilter.More(field, DateTools.dateToString(
           date1, Resolution.DAY));
 
       return new ConstantScoreQuery(filter);
@@ -84,7 +84,7 @@ public class DefaultDateParser implements DateParser {
       if ((date1 != null) && (date2 != null)) {
       }
 
-      return new ConstantScoreQuery(new RangeFilter(field, DateTools
+      return new ConstantScoreQuery(new TermRangeFilter(field, DateTools
           .dateToString(date1, Resolution.DAY), DateTools.dateToString(date2,
           Resolution.DAY), true, true));
     } else {

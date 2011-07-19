@@ -133,7 +133,7 @@
 			<fileset dir="${build.classes.dir}" includes="**/*.properties" />
 			<manifest>
 				<attribute name="Main-Class" value="com.mhs.qsol.QsolParser" />
-				<attribute name="Class-Path" value="lib/lucene-core-2.1-dev.jar" />
+				<attribute name="Class-Path" value="lib/lucene-core-3.3.0.jar" />
 				
 			</manifest>
 		</jar>
