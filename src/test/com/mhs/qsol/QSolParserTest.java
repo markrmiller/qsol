@@ -48,6 +48,10 @@ public class QSolParserTest extends TestCase {
   private Analyzer analyzer = new StandardAnalyzer(Version.LUCENE_33);
 
   public String parse(String query) {
+    return parse(query, analyzer);
+  }
+  
+  public String parse(String query, Analyzer analyzer) {
     parser.markDateField("date");
     System.out.println("query:" + query);
 
@@ -932,6 +936,16 @@ public class QSolParserTest extends TestCase {
     example = "\"MARK IS THE BEST MAN\"";
     expected = "spanNear([allFields:mark, allFields:best, allFields:man], 0, true)";
     assertEquals(expected, parse(example));
+
+    // Phrase queries should also work with WhitespaceAnalyzer (without boost):
+    example = "\"mark is the best man\"";
+    expected = "spanNear([allFields:mark, allFields:is, allFields:the, allFields:best, allFields:man], 0, true)";
+    assertEquals(expected, parse(example, new WhitespaceAnalyzer()));
+
+    // Phrase queries should also work with WhitespaceAnalyzer (with boost):
+    example = "\"mark is the best man\":5";
+    expected = "spanNear([allFields:mark, allFields:is, allFields:the, allFields:best, allFields:man], 5, true)";
+    assertEquals(expected, parse(example, new WhitespaceAnalyzer()));
   }
 
   public void testDefaultOp() {

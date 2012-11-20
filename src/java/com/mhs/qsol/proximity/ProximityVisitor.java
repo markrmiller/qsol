@@ -283,8 +283,10 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
         holdSlop = slop;
         slop = Integer.parseInt(m.group(2));
       } else {
+        String tokensWithQuotes = choice.choice.toString();
+        tokens = tokensWithQuotes.substring(1, tokensWithQuotes.length()-1);
         proxBuilder.addDistrib(new BasicDistributable(
-            (SpanQuery) tokenToQuery(choice.choice.toString())));
+            (SpanQuery) tokenToQuery(tokens)));
 
         return null;
       }

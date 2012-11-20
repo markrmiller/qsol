@@ -384,7 +384,9 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
         holdSlop = slop;
         slop = Integer.parseInt(m.group(2));
       } else {
-        return tokenToQuery(choice.choice.toString());
+        String tokensWithQuotes = choice.choice.toString();
+        tokens = tokensWithQuotes.substring(1, tokensWithQuotes.length()-1);
+        return tokenToQuery(tokens);
       }
 
       returnQuery = tokenToQuery(tokens);
