@@ -990,6 +990,16 @@ public class QSolParserTest extends TestCase {
     assertEquals(expected, parse(example, new WhitespaceAnalyzer()));
   }
   
+  public void testPhraseQueriesWithSlopAndProximity() {
+      example = "\"big time\":2 ~5 cat";
+      expected = "spanNear([spanNear([allFields:big, allFields:time], 2, true), allFields:cat], 5, false)";
+      assertEquals(expected, parse(example));
+
+      example = "\"big time\":2 ~10 \"small town\"";
+      expected = "spanNear([spanNear([allFields:big, allFields:time], 2, true), spanNear([allFields:small, allFields:town], 0, true)], 10, false)";
+      assertEquals(expected, parse(example));
+    }  
+  
   public void testThatPhraseSlopIsNotAffectedByContext() throws Exception {
     // All these phrases should have default slop (slop == 0):
 

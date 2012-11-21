@@ -272,6 +272,8 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
     NodeChoice choice = (NodeChoice) n.f0;
 
     if (choice.which == 0) {
+      // if <MATCHALL>
+      throw new RuntimeException("MATCHALL not allowed in proximity search");
     } else if (choice.which == 1) {
       // if <QUOTED>
       Matcher m = QsolToQueryVisitor.GET_SLOP.matcher(choice.choice.toString());
@@ -285,6 +287,8 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
         slop = holdSlop;
 
         proxBuilder.addDistrib(new BasicDistributable((SpanQuery) returnQuery));
+        
+        return null;
       } else {
         String tokensWithQuotes = choice.choice.toString();
         tokens = tokensWithQuotes.substring(1, tokensWithQuotes.length()-1);
@@ -294,6 +298,7 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
         return null;
       }
     } else if (choice.which == 2) {
+      // if <BOOSTEDQUOTED>
       Matcher m = QsolToQueryVisitor.GET_SLOP_AND_BOOST.matcher(choice.choice
           .toString());
 
@@ -323,9 +328,10 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
       throw new RuntimeException(
           "boosted quoted matched in javacc but not here");
     } else if (choice.which == 3) {
-      // error range query in prox
+      // If <RANGE>
       throw new RuntimeException("RangeQuery found in proximity clause");
     } else if (choice.which == 4) {
+      // If <WILDCARD>
       String term = choice.choice.toString();
 
       if (lowercaseExpandedTermsboolean) {
@@ -338,6 +344,7 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
 
       return null;
     } else if (choice.which == 5) {
+      // If <FUZZY>
       // logger.fine("fuzzy");
       String fuzzyString = choice.choice.toString();
 
@@ -349,7 +356,10 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
       proxBuilder
           .addDistrib(new BasicDistributable(new SpanFuzzyQuery(new Term(field,
               fuzzyString.substring(0, fuzzyString.length() - 1)))));
+      
+      return null;
     } else if (choice.which == 6) {
+      // If <BOOSTEDSEARCHTOKEN>
       System.out.println("boosted term:" +choice.choice.toString());
       // boosted term
       Matcher m = BOOST_EXTRACTOR.matcher(choice.choice.toString());
@@ -367,12 +377,18 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
       } else {
         throw new RuntimeException("Matched boosted in javacc but not here");
       }
+    } else if (choice.which == 7) {
+      // IF <SEARCHTOKEN>
+      proxBuilder.addDistrib(new BasicDistributable(
+            (SpanQuery) tokenToQuery(choice.choice.toString())));
+
+      return null;
+    } else {
+      throw new RuntimeException(
+              "Unexpected SearchToken node type in ProximityVisitor.visit: " +
+              Integer.toString(choice.which)
+              );
     }
-
-    proxBuilder.addDistrib(new BasicDistributable(
-        (SpanQuery) tokenToQuery(choice.choice.toString())));
-
-    return null;
   }
 
   /**
