@@ -1171,6 +1171,67 @@ public class QSolParserTest extends TestCase {
     example = "ubs ~25 (foo | bar | baz | bin | bag)";
     parse(example);
 }
+  
+  // The prototypical problem case here was "ubs ~25 (foo | bar | baz | buz)", whose expansion
+  // involved erroneous MUST clauses.
+  public void testThatProximityDistributesCorrectlyOverOrChains() throws Exception {
+    String parseResult;
+    example = "ubs ~25 (foo | bar | baz | buz)";
+    expected = "spanOr([spanNear([allFields:ubs, allFields:foo], 25, false), spanNear([allFields:ubs, allFields:bar], 25, false)]) spanOr([spanNear([allFields:ubs, allFields:baz], 25, false), spanNear([allFields:ubs, allFields:buz], 25, false)])";
+    parseResult = parse(example);
+    assertEquals(expected, parseResult);
+
+    example = "ubs ~25 (foo | bar)";
+    expected = "spanOr([spanNear([allFields:ubs, allFields:foo], 25, false), spanNear([allFields:ubs, allFields:bar], 25, false)])";
+    parseResult = parse(example);
+    assertEquals(expected, parseResult);
+
+    example = "ubs ~25 (foo & bar & baz)";
+    expected = "+spanNear([allFields:ubs, allFields:foo], 25, false) +spanNear([allFields:ubs, allFields:bar], 25, false) +spanNear([allFields:ubs, allFields:baz], 25, false)";
+    parseResult = parse(example);
+    assertEquals(expected, parseResult);
+
+    example = "ubs ~25 (foo | bar | baz)";
+    expected = "spanOr([spanNear([allFields:ubs, allFields:foo], 25, false), spanNear([allFields:ubs, allFields:bar], 25, false)]) spanNear([allFields:ubs, allFields:baz], 25, false)";
+    parseResult = parse(example);
+    assertEquals(expected, parseResult);
+
+    example = "(one ~5 (two & (three & four)))";
+    expected = "+spanNear([allFields:one, allFields:two], 5, false) +(+spanNear([allFields:one, allFields:three], 5, false) +spanNear([allFields:one, allFields:four], 5, false))";
+    parseResult = parse(example);
+    assertEquals(expected, parseResult);
+
+    example = "(one ~5 (two | (three | four)))";
+    expected = "spanNear([allFields:one, allFields:two], 5, false) (spanNear([allFields:one, allFields:three], 5, false) spanNear([allFields:one, allFields:four], 5, false))";
+    parseResult = parse(example);
+    assertEquals(expected, parseResult);
+
+    example = "(one ~5 ((two | three) | four))";
+    expected = "(spanNear([allFields:one, allFields:two], 5, false) spanNear([allFields:one, allFields:three], 5, false)) spanNear([allFields:one, allFields:four], 5, false)";
+    parseResult = parse(example);
+    System.out.println(parseResult);
+    assertEquals(expected, parseResult);
+
+    example = "(chicken ~25 ((dog | cat | pig) & fish))";
+    expected = "+((spanNear([allFields:chicken, allFields:dog], 25, false) spanNear([allFields:chicken, allFields:cat], 25, false) spanNear([allFields:chicken, allFields:pig], 25, false))) +spanNear([allFields:chicken, allFields:fish], 25, false)";
+    parseResult = parse(example);
+    assertEquals(expected, parseResult);
+
+    example = "chicken ~25 ((dog | cat | pig | ox) & fish)";
+    expected = "+((spanNear([allFields:chicken, allFields:dog], 25, false) spanNear([allFields:chicken, allFields:cat], 25, false) spanNear([allFields:chicken, allFields:pig], 25, false) spanNear([allFields:chicken, allFields:ox], 25, false))) +spanNear([allFields:chicken, allFields:fish], 25, false)";
+    parseResult = parse(example);
+    assertEquals(expected, parseResult);
+
+    example = "((dog | cat | pig) & fish) ~25 chicken";
+    expected = "+(spanOr([spanNear([allFields:dog, allFields:chicken], 25, false), spanNear([allFields:cat, allFields:chicken], 25, false)]) spanNear([allFields:pig, allFields:chicken], 25, false)) +spanNear([allFields:fish, allFields:chicken], 25, false)";
+    parseResult = parse(example);
+    assertEquals(expected, parseResult);
+
+    example = "((dog | cat | pig | ox) & fish) ~25 chicken";
+    expected = "+(spanOr([spanNear([allFields:dog, allFields:chicken], 25, false), spanNear([allFields:cat, allFields:chicken], 25, false)]) spanOr([spanNear([allFields:pig, allFields:chicken], 25, false), spanNear([allFields:ox, allFields:chicken], 25, false)])) +spanNear([allFields:fish, allFields:chicken], 25, false)";
+    parseResult = parse(example);
+    assertEquals(expected, parseResult);
+  }
     
   public void testDefaultOp() {
     parser.setDefaultOp("|");
