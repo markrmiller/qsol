@@ -133,7 +133,7 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
   private Analyzer analyzer;
   private Locale locale = Locale.getDefault();
   private boolean[] opChain = new boolean[] { false, false, false, false };
-  private int slop = 0;
+  private int slop = 0; // 0 is the default slop for when phrases become SpanNearQuerys
   private Directory didyoumeanIndex = null;
   private DateParser dateParser;
   private List<Operator> orderOfOps = new ArrayList<Operator>();
@@ -363,11 +363,9 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
   }
 
   /**
-   * f0 -> <QUOTED> | <WILDCARD> | <FUZZY> | <SEARCHTOKEN>
+   * f0 -> <MATCHALL> | <QUOTED> | <BOOSTEDQUOTED> | <RANGE> | <WILDCARD> | <FUZZY> | <BOOSTEDSEARCHTOKEN> | <SEARCHTOKEN>
    */
   public Query visit(SearchToken n, Query query) {
-    Query returnQuery = null;
-
     String tokens = null;
     NodeChoice choice = (NodeChoice) n.f0;
 
@@ -376,31 +374,27 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
 
     } else if (choice.which == 1) {
       Matcher m = GET_SLOP.matcher(choice.choice.toString());
-      int holdSlop = 1;
 
       // check for slop
       if (m.matches()) {
         tokens = m.group(1);
-        holdSlop = slop;
+        int holdSlop = slop;
         slop = Integer.parseInt(m.group(2));
+        Query returnQuery = tokenToQuery(tokens);
+        slop = holdSlop;
+        return returnQuery;
       } else {
         String tokensWithQuotes = choice.choice.toString();
         tokens = tokensWithQuotes.substring(1, tokensWithQuotes.length()-1);
         return tokenToQuery(tokens);
       }
-
-      returnQuery = tokenToQuery(tokens);
-      slop = holdSlop;
-
-      return returnQuery;
     } else if (choice.which == 2) {
       Matcher m = GET_SLOP_AND_BOOST.matcher(choice.choice.toString());
-      int holdSlop = 1;
 
       // check for slop
       if (m.matches()) {
         tokens = m.group(1);
-        holdSlop = slop;
+        int holdSlop = slop;
 
         String phraseSlop = m.group(2);
 
@@ -756,6 +750,7 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
           clauses[i] = spanQuery;
         }
 
+        // Note: There's a bug here (not by me) that where term offsets are not respected.
         SpanNearQuery query = new SpanNearQuery(clauses, slop, true);
 
         return query;

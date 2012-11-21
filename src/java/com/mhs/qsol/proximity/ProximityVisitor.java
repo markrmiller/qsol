@@ -88,7 +88,7 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
   ProximityBuilder proxBuilder = new ProximityBuilder();
   private String field;
   private Analyzer analyzer;
-  private int slop = 1;
+  private int slop = 0; // 0 is the default slop for when phrases become SpanNearQuerys
   private List<Operator> orderOfOps = new ArrayList<Operator>();
   private float boost = 1;
 
@@ -265,7 +265,7 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
   }
 
   /**
-   * f0 -> <QUOTED> | <WILDCARD> | <FUZZY> | <SEARCHTOKEN>
+   * f0 -> <MATCHALL> | <QUOTED> | <BOOSTEDQUOTED> | <RANGE> | <WILDCARD> | <FUZZY> | <BOOSTEDSEARCHTOKEN> | <SEARCHTOKEN>
    */
   public Query visit(SearchToken n, Query query) {
     String tokens = null;
@@ -275,13 +275,16 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
     } else if (choice.which == 1) {
       // if <QUOTED>
       Matcher m = QsolToQueryVisitor.GET_SLOP.matcher(choice.choice.toString());
-      int holdSlop = 1;
 
       // check for slop
       if (m.matches()) {
         tokens = m.group(1);
-        holdSlop = slop;
+        int holdSlop = slop;
         slop = Integer.parseInt(m.group(2));
+        Query returnQuery = tokenToQuery(tokens);
+        slop = holdSlop;
+
+        proxBuilder.addDistrib(new BasicDistributable((SpanQuery) returnQuery));
       } else {
         String tokensWithQuotes = choice.choice.toString();
         tokens = tokensWithQuotes.substring(1, tokensWithQuotes.length()-1);
@@ -290,20 +293,14 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
 
         return null;
       }
-
-      Query returnQuery = tokenToQuery(tokens);
-      slop = holdSlop;
-
-      proxBuilder.addDistrib(new BasicDistributable((SpanQuery) returnQuery));
     } else if (choice.which == 2) {
       Matcher m = QsolToQueryVisitor.GET_SLOP_AND_BOOST.matcher(choice.choice
           .toString());
-      int holdSlop = 1;
 
       // check for slop
       if (m.matches()) {
         tokens = m.group(1);
-        holdSlop = slop;
+        int holdSlop = slop;
 
         String phraseSlop = m.group(2);
 
