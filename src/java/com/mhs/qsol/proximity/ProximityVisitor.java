@@ -33,6 +33,8 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.spans.SpanNearQuery;
@@ -639,17 +641,33 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
       op.visitf1(this, query);
 
       // proxBuilder.clearDistribs();
-      SpanQuery spanQuery = (SpanQuery) proxBuilder.getQuery();
+      Query possiblyBooleanQuery = proxBuilder.getQuery();
 
       if (logger.isLoggable(Level.FINE)) {
         logger.fine("spanquery:" + proxBuilder.getQuery());
       }
 
       proxBuilder = storeBuilder;
-      proxBuilder.addDistrib(new BasicDistributable(spanQuery));
+      addQueryToDistributable(possiblyBooleanQuery);
 
       if (logger.isLoggable(Level.FINE)) {
         logger.fine("out of nested prox <-----------------------------");
+      }
+    }
+  }
+  
+  private void addQueryToDistributable(Query query){
+    if(query instanceof SpanQuery){     
+      proxBuilder.addDistrib(new BasicDistributable((SpanQuery)query));
+    } else if(query instanceof BooleanQuery) {
+      BooleanClause [] booleanClauses = ((BooleanQuery)query).getClauses();
+      for (BooleanClause booleanClause : booleanClauses) {
+        Occur occur = booleanClause.getOccur();
+        Query subQuery = booleanClause.getQuery();
+        if(subQuery instanceof SpanQuery) { //about to add span query, so, add the connector now
+          proxBuilder.addConnector(occur);
+        }
+        addQueryToDistributable(subQuery);
       }
     }
   }

@@ -1337,5 +1337,15 @@ public class QSolParserTest extends TestCase {
     assertEquals(expected, parse(example));
 
   }
+  
+  public void testNestedProximity(){
+      example = "(project ~1 (earning | revenue | ben)) ~1 betty";
+      expected = "spanOr([spanNear([spanOr([spanNear([allFields:project, allFields:earning], 1, false), spanNear([allFields:project, allFields:revenue], 1, false)]), allFields:betty], 1, false), spanNear([spanNear([allFields:project, allFields:ben], 1, false), allFields:betty], 1, false)])";
+      assertEquals(expected, parse(example));
+      
+      example = "(project ~1 (earning & revenue & ben)) ~1 betty";
+      expected = "+spanNear([spanNear([allFields:project, allFields:earning], 1, false), allFields:betty], 1, false) +spanNear([spanNear([allFields:project, allFields:revenue], 1, false), allFields:betty], 1, false) +spanNear([spanNear([allFields:project, allFields:ben], 1, false), allFields:betty], 1, false)";
+      assertEquals(expected, parse(example));
+  }
 
 }
