@@ -148,7 +148,7 @@ public class BasicDistributable implements Distributable {
 
       // must make sure both clauses are spans and connector is | if you
       // want to optimize to SpanOr
-      if ((con == Occur.SHOULD) && query instanceof SpanQuery) {
+      if (children.size() > (i+1) && (con == Occur.SHOULD) && query instanceof SpanQuery) {
         cacheQuery2 = children.get(i + 1).distribute(this.query, proxInfo);
 
         if (cacheQuery2 instanceof SpanQuery) {

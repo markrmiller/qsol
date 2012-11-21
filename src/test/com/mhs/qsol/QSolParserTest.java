@@ -1158,6 +1158,20 @@ public class QSolParserTest extends TestCase {
       }
     }
 
+  public void testThatDistributingProximityOverDisjunctionDoesntThrowExceptions() throws Exception {
+    // Even-numbered case should not throw exceptions:
+    example = "ubs ~25 (foo | bar)";
+    parse(example);
+    example = "ubs ~25 (foo | bar | baz | bin)";
+    parse(example);
+
+    // Nor should odd-numbered cases:
+    example = "ubs ~25 (foo | bar | baz)";
+    parse(example);
+    example = "ubs ~25 (foo | bar | baz | bin | bag)";
+    parse(example);
+}
+    
   public void testDefaultOp() {
     parser.setDefaultOp("|");
     example = "john mccain";
