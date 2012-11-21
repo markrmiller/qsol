@@ -1,5 +1,6 @@
 package com.mhs.qsol;
 
+import java.io.Reader;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -17,6 +18,11 @@ import junit.framework.TestCase;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.WhitespaceAnalyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Token;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
+import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexReader;
@@ -1027,6 +1033,130 @@ public class QSolParserTest extends TestCase {
     expected = "spanNear([spanNear([allFields:big, allFields:time], 0, true), spanNear([allFields:small, allFields:town], 0, true)], 15, true)";
     assertEquals(expected, parse(example));
   }
+  
+  public void testPhraseQueriesWithMultipleTokensPerPosition() throws Exception {
+      // Standard Lucene query parser outputs a MultiPhraseQuery to handle quoted
+      // phrases where the Analyzer has output multiple tokens per position. Here
+      // we aim for the equivalent with SpanQuerys.
+
+      // Should work without proximity operator
+      example = "\"exchange commission audit trail\"";
+      expected = "spanNear([spanOr([allFields:exchange, allFields:exchange commission]), allFields:commission, spanOr([allFields:audit, allFields:audit trail]), allFields:trail], 0, true)";
+      Query query = parser.parse("allFields", example, new SillyAnalyzer());
+      assertEquals(expected, query.toString());
+
+      // Should work with proximity operator
+      example = "\"exchange commission audit trail\" ~5 fish";
+      expected = "spanNear([spanNear([spanOr([allFields:exchange, allFields:exchange commission]), allFields:commission, spanOr([allFields:audit, allFields:audit trail]), allFields:trail], 0, true), allFields:fish], 5, false)";
+      Query query2 = parser.parse("allFields", example, new SillyAnalyzer());
+      assertEquals(expected, query2.toString());
+    }
+
+    // Helper for testPhraseQueriesWithMultipleTokensPerPosition.
+    // Note this is not a legitimate analyzer; the Token sequences are
+    // hard-coded.
+    class SillyAnalyzer extends Analyzer {
+      public TokenStream tokenStream(String fieldName, Reader r) {
+        String input;
+        try {
+          BufferedReader r2 = new BufferedReader(r);
+          input = r2.readLine();
+        } catch (IOException e) {
+          input = "";
+        }
+
+        if (input.equals("exchange commission audit trail"))
+          return new SillyTokenStream1();
+        else if (input.equals("fish"))
+          return new SillyTokenStream2();
+        else
+          throw new RuntimeException("Unexpected input string: " + input);
+      }
+
+      class SillyTokenStream1 extends TokenStream {
+        Token[] tokens;
+        int curToken;
+        
+        private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
+        private final PositionIncrementAttribute posIncAtt = addAttribute(PositionIncrementAttribute.class);
+        private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
+
+        // This example is inspired by how you could conceivably have a bigram token
+        // optimization going on.
+        public SillyTokenStream1()
+        {
+          tokens = new Token[6];
+          tokens[0] = new Token("exchange", 0, 8);
+          tokens[1] = new Token("exchange commission", 0, 19);
+          tokens[1].setPositionIncrement(0);
+
+          tokens[2] = new Token("commission", 9, 19);
+
+          tokens[3] = new Token("audit", 20, 25);
+          tokens[4] = new Token("audit trail", 20, 31);
+          tokens[4].setPositionIncrement(0);
+
+          tokens[5] = new Token("trail", 26, 31);
+
+          curToken = 0;
+        }
+
+        public boolean incrementToken()
+        {
+          if (curToken >= tokens.length) {
+            return false;
+          }
+          else {
+            Token t = tokens[curToken++];
+            
+            termAtt.setEmpty();
+            termAtt.append(t.term());
+            
+            posIncAtt.setPositionIncrement(t.getPositionIncrement());
+            
+            offsetAtt.setOffset(t.startOffset(), t.endOffset());
+            
+            return true;
+          }
+        }
+      }
+
+      class SillyTokenStream2 extends TokenStream {
+        Token[] tokens;
+        int curToken;
+        
+        private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
+        private final PositionIncrementAttribute posIncAtt = addAttribute(PositionIncrementAttribute.class);
+        private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
+
+        public SillyTokenStream2()
+        {
+          tokens = new Token[1];
+          tokens[0] = new Token("fish", 0, 4);
+
+          curToken = 0;
+        }
+
+        public boolean incrementToken()
+        {
+          if (curToken >= tokens.length) {
+            return false;
+          }
+          else {
+            Token t = tokens[curToken++];
+            
+            termAtt.setEmpty();
+            termAtt.append(t.term());
+            
+            posIncAtt.setPositionIncrement(t.getPositionIncrement());
+            
+            offsetAtt.setOffset(t.startOffset(), t.endOffset());
+            
+            return true;
+          }
+        }
+      }
+    }
 
   public void testDefaultOp() {
     parser.setDefaultOp("|");

@@ -31,6 +31,7 @@ import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.Query;
@@ -481,6 +482,7 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
     TokenStream source = analyzer.tokenStream(field, new StringReader(token));
     CharTermAttribute charTermAtrib = source.getAttribute(CharTermAttribute.class);
     OffsetAttribute offsetAtrib = source.getAttribute(OffsetAttribute.class);
+    PositionIncrementAttribute posIncAtt = source.addAttribute(PositionIncrementAttribute.class);
     ArrayList<Token> v = new ArrayList<Token>();
     Token t;
     int positionCount = 0;
@@ -492,6 +494,7 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
           break;
         }
         t = new Token(charTermAtrib.buffer(), 0, charTermAtrib.length(), offsetAtrib.startOffset(), offsetAtrib.endOffset());
+        t.setPositionIncrement(posIncAtt.getPositionIncrement());
       } catch (IOException e) {
         t = null;
       }
@@ -537,18 +540,40 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
 
           return new SpanOrQuery(spanQueries);
         } else {
-          List<SpanQuery> clauses = new ArrayList<SpanQuery>();
+            // All the Tokens in each sub-list are positioned at the the same location.
+            ArrayList<ArrayList<Token>> identicallyPositionedTokenLists =
+                    new ArrayList<ArrayList<Token>>();
+            for (int i = 0; i < v.size(); i++) {
+              if ((i == 0) || (v.get(i).getPositionIncrement() > 0)) {
+                identicallyPositionedTokenLists.add(new ArrayList<Token>());
+              }
+              ArrayList<Token> curList =
+                      identicallyPositionedTokenLists.get(identicallyPositionedTokenLists.size()-1);
+              curList.add(v.get(i));
+            }
 
-          for (int i = 0; i < v.size(); i++) {
-            // TODO: handle this?
-            // if (t.getPositionIncrement() == 0) {
-            // }
-            Token t2 = v.get(i);
-            clauses.set(i, new SpanTermQuery(new Term(field, new String(t2.buffer(), 0, t2.length()))));
-          }
+            ArrayList<SpanQuery> spanNearSubclauses = new ArrayList<SpanQuery>();
+            for (int listNum = 0; listNum < identicallyPositionedTokenLists.size(); listNum++) {
+              ArrayList<Token> curTokens = identicallyPositionedTokenLists.get(listNum);
 
-          SpanNearQuery query = new SpanNearQuery((SpanQuery[]) clauses
-              .toArray(new SpanQuery[0]), slop, true);
+              ArrayList<SpanTermQuery> curTermQueries = new ArrayList<SpanTermQuery>();
+              for (int tokenNum = 0; tokenNum < curTokens.size(); tokenNum++) {
+                SpanTermQuery termQuery = new SpanTermQuery(new Term(field, curTokens.get(tokenNum).term()));
+                termQuery.setBoost(this.boost);
+                curTermQueries.add(termQuery);
+              }
+
+              int size = curTermQueries.size();
+              if (size <= 0)
+                continue;
+              else if (size == 1)
+                spanNearSubclauses.add(curTermQueries.get(0));
+              else
+                spanNearSubclauses.add(new SpanOrQuery(curTermQueries.toArray(new SpanQuery[0])));
+            }
+
+            SpanNearQuery query = new SpanNearQuery((SpanQuery[]) spanNearSubclauses
+                .toArray(new SpanQuery[0]), slop, true);
 
           return query;
         }
