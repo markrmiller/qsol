@@ -585,6 +585,13 @@ public class QSolParserTest extends TestCase {
     expected = "+spanNear([allFields:horse, allFields:man], 0, true) +allFields:dead";
     assertEquals(expected, parse(example));
 
+
+    // The two assertions below are bogus. First, if you look at
+    // the grammar, open-paren doesn't seem to be designed to be
+    // an escapeable character. Second, the "expected" values
+    // are obviously crazy. Commenting them out for now.
+
+    /*
     example = "\\(search";
     expected = "+spanNear([allFields:horse, allFields:man], 0, true) +allFields:dead";
     assertEquals(expected, parse(example));
@@ -592,6 +599,7 @@ public class QSolParserTest extends TestCase {
     example = "badfield\\(search";
     expected = "+spanNear([allFields:horse, allFields:man], 0, true) +allFields:dead";
     assertEquals(expected, parse(example));
+    */
   }
 
   public void test0Padding() throws IOException {
