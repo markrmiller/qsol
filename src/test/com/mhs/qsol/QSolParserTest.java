@@ -251,6 +251,26 @@ public class QSolParserTest extends TestCase {
     assertEquals(expected, parse(example));
   }
 
+  // All of these are legitimate qsol syntax, but the call to
+  // parse(example) throws an exception.
+  public void testFixTheseBooleanPlusProxErrors()
+  {
+     example = "(cat & (extend | extends | extension)) ~30 (hsr | rodino)";
+     parse(example);
+
+     example = "(\"tender offer\" & (extend | extends | extension)) ~30 rodino";
+     parse(example);
+
+     example = "(tender & (extend | extends | extension)) ~30 rodino";
+     parse(example);
+
+     example = "(tender & (extend & extends & extension)) ~30 rodino";
+     parse(example);
+
+     example = "(((\"tender offer\" & (extend | extends | extension)) ~30 (hsr | rodino)))";
+     parse(example);
+  }
+
   public void testThesauraus() {
     Set<String> words = new HashSet<String>();
     words.add("test1");
