@@ -31,7 +31,10 @@ import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.spans.SpanNearQuery;
@@ -88,7 +91,7 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
   ProximityBuilder proxBuilder = new ProximityBuilder();
   private String field;
   private Analyzer analyzer;
-  private int slop = 1;
+  private int slop = 0; // 0 is the default slop for when phrases become SpanNearQuerys
   private List<Operator> orderOfOps = new ArrayList<Operator>();
   private float boost = 1;
 
@@ -265,43 +268,47 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
   }
 
   /**
-   * f0 -> <QUOTED> | <WILDCARD> | <FUZZY> | <SEARCHTOKEN>
+   * f0 -> <MATCHALL> | <QUOTED> | <BOOSTEDQUOTED> | <RANGE> | <WILDCARD> | <FUZZY> | <BOOSTEDSEARCHTOKEN> | <SEARCHTOKEN>
    */
   public Query visit(SearchToken n, Query query) {
     String tokens = null;
     NodeChoice choice = (NodeChoice) n.f0;
 
     if (choice.which == 0) {
+      // if <MATCHALL>
+      throw new RuntimeException("MATCHALL not allowed in proximity search");
     } else if (choice.which == 1) {
       // if <QUOTED>
       Matcher m = QsolToQueryVisitor.GET_SLOP.matcher(choice.choice.toString());
-      int holdSlop = 1;
 
       // check for slop
       if (m.matches()) {
         tokens = m.group(1);
-        holdSlop = slop;
+        int holdSlop = slop;
         slop = Integer.parseInt(m.group(2));
+        Query returnQuery = tokenToQuery(tokens);
+        slop = holdSlop;
+
+        proxBuilder.addDistrib(new BasicDistributable((SpanQuery) returnQuery));
+        
+        return null;
       } else {
+        String tokensWithQuotes = choice.choice.toString();
+        tokens = tokensWithQuotes.substring(1, tokensWithQuotes.length()-1);
         proxBuilder.addDistrib(new BasicDistributable(
-            (SpanQuery) tokenToQuery(choice.choice.toString())));
+            (SpanQuery) tokenToQuery(tokens)));
 
         return null;
       }
-
-      Query returnQuery = tokenToQuery(tokens);
-      slop = holdSlop;
-
-      proxBuilder.addDistrib(new BasicDistributable((SpanQuery) returnQuery));
     } else if (choice.which == 2) {
+      // if <BOOSTEDQUOTED>
       Matcher m = QsolToQueryVisitor.GET_SLOP_AND_BOOST.matcher(choice.choice
           .toString());
-      int holdSlop = 1;
 
       // check for slop
       if (m.matches()) {
         tokens = m.group(1);
-        holdSlop = slop;
+        int holdSlop = slop;
 
         String phraseSlop = m.group(2);
 
@@ -324,9 +331,10 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
       throw new RuntimeException(
           "boosted quoted matched in javacc but not here");
     } else if (choice.which == 3) {
-      // error range query in prox
+      // If <RANGE>
       throw new RuntimeException("RangeQuery found in proximity clause");
     } else if (choice.which == 4) {
+      // If <WILDCARD>
       String term = choice.choice.toString();
 
       if (lowercaseExpandedTermsboolean) {
@@ -339,6 +347,7 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
 
       return null;
     } else if (choice.which == 5) {
+      // If <FUZZY>
       // logger.fine("fuzzy");
       String fuzzyString = choice.choice.toString();
 
@@ -350,7 +359,10 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
       proxBuilder
           .addDistrib(new BasicDistributable(new SpanFuzzyQuery(new Term(field,
               fuzzyString.substring(0, fuzzyString.length() - 1)))));
+      
+      return null;
     } else if (choice.which == 6) {
+      // If <BOOSTEDSEARCHTOKEN>
       System.out.println("boosted term:" +choice.choice.toString());
       // boosted term
       Matcher m = BOOST_EXTRACTOR.matcher(choice.choice.toString());
@@ -368,12 +380,18 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
       } else {
         throw new RuntimeException("Matched boosted in javacc but not here");
       }
+    } else if (choice.which == 7) {
+      // IF <SEARCHTOKEN>
+      proxBuilder.addDistrib(new BasicDistributable(
+            (SpanQuery) tokenToQuery(choice.choice.toString())));
+
+      return null;
+    } else {
+      throw new RuntimeException(
+              "Unexpected SearchToken node type in ProximityVisitor.visit: " +
+              Integer.toString(choice.which)
+              );
     }
-
-    proxBuilder.addDistrib(new BasicDistributable(
-        (SpanQuery) tokenToQuery(choice.choice.toString())));
-
-    return null;
   }
 
   /**
@@ -466,6 +484,7 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
     TokenStream source = analyzer.tokenStream(field, new StringReader(token));
     CharTermAttribute charTermAtrib = source.getAttribute(CharTermAttribute.class);
     OffsetAttribute offsetAtrib = source.getAttribute(OffsetAttribute.class);
+    PositionIncrementAttribute posIncAtt = source.addAttribute(PositionIncrementAttribute.class);
     ArrayList<Token> v = new ArrayList<Token>();
     Token t;
     int positionCount = 0;
@@ -477,6 +496,7 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
           break;
         }
         t = new Token(charTermAtrib.buffer(), 0, charTermAtrib.length(), offsetAtrib.startOffset(), offsetAtrib.endOffset());
+        t.setPositionIncrement(posIncAtt.getPositionIncrement());
       } catch (IOException e) {
         t = null;
       }
@@ -522,18 +542,40 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
 
           return new SpanOrQuery(spanQueries);
         } else {
-          List<SpanQuery> clauses = new ArrayList<SpanQuery>();
+            // All the Tokens in each sub-list are positioned at the the same location.
+            ArrayList<ArrayList<Token>> identicallyPositionedTokenLists =
+                    new ArrayList<ArrayList<Token>>();
+            for (int i = 0; i < v.size(); i++) {
+              if ((i == 0) || (v.get(i).getPositionIncrement() > 0)) {
+                identicallyPositionedTokenLists.add(new ArrayList<Token>());
+              }
+              ArrayList<Token> curList =
+                      identicallyPositionedTokenLists.get(identicallyPositionedTokenLists.size()-1);
+              curList.add(v.get(i));
+            }
 
-          for (int i = 0; i < v.size(); i++) {
-            // TODO: handle this?
-            // if (t.getPositionIncrement() == 0) {
-            // }
-            Token t2 = v.get(i);
-            clauses.set(i, new SpanTermQuery(new Term(field, new String(t2.buffer(), 0, t2.length()))));
-          }
+            ArrayList<SpanQuery> spanNearSubclauses = new ArrayList<SpanQuery>();
+            for (int listNum = 0; listNum < identicallyPositionedTokenLists.size(); listNum++) {
+              ArrayList<Token> curTokens = identicallyPositionedTokenLists.get(listNum);
 
-          SpanNearQuery query = new SpanNearQuery((SpanQuery[]) clauses
-              .toArray(new SpanQuery[0]), slop, true);
+              ArrayList<SpanTermQuery> curTermQueries = new ArrayList<SpanTermQuery>();
+              for (int tokenNum = 0; tokenNum < curTokens.size(); tokenNum++) {
+                SpanTermQuery termQuery = new SpanTermQuery(new Term(field, curTokens.get(tokenNum).term()));
+                termQuery.setBoost(this.boost);
+                curTermQueries.add(termQuery);
+              }
+
+              int size = curTermQueries.size();
+              if (size <= 0)
+                continue;
+              else if (size == 1)
+                spanNearSubclauses.add(curTermQueries.get(0));
+              else
+                spanNearSubclauses.add(new SpanOrQuery(curTermQueries.toArray(new SpanQuery[0])));
+            }
+
+            SpanNearQuery query = new SpanNearQuery((SpanQuery[]) spanNearSubclauses
+                .toArray(new SpanQuery[0]), slop, true);
 
           return query;
         }
@@ -599,17 +641,33 @@ public class ProximityVisitor extends GJDepthFirst<Query, Query> {
       op.visitf1(this, query);
 
       // proxBuilder.clearDistribs();
-      SpanQuery spanQuery = (SpanQuery) proxBuilder.getQuery();
+      Query possiblyBooleanQuery = proxBuilder.getQuery();
 
       if (logger.isLoggable(Level.FINE)) {
         logger.fine("spanquery:" + proxBuilder.getQuery());
       }
 
       proxBuilder = storeBuilder;
-      proxBuilder.addDistrib(new BasicDistributable(spanQuery));
+      addQueryToDistributable(possiblyBooleanQuery);
 
       if (logger.isLoggable(Level.FINE)) {
         logger.fine("out of nested prox <-----------------------------");
+      }
+    }
+  }
+  
+  private void addQueryToDistributable(Query query){
+    if(query instanceof SpanQuery){     
+      proxBuilder.addDistrib(new BasicDistributable((SpanQuery)query));
+    } else if(query instanceof BooleanQuery) {
+      BooleanClause [] booleanClauses = ((BooleanQuery)query).getClauses();
+      for (BooleanClause booleanClause : booleanClauses) {
+        Occur occur = booleanClause.getOccur();
+        Query subQuery = booleanClause.getQuery();
+        if(subQuery instanceof SpanQuery) { //about to add span query, so, add the connector now
+          proxBuilder.addConnector(occur);
+        }
+        addQueryToDistributable(subQuery);
       }
     }
   }

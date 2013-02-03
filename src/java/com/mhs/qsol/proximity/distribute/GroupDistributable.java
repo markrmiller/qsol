@@ -239,7 +239,7 @@ public class GroupDistributable implements Distributable {
 
     for (int i = 0; i < size; i++) {
       Query query = distribs.get(i).distribute(spanQuery, proxInfo);
-      boolQuery.add(query, Occur.MUST);
+      boolQuery.add(query, connector.get(i));
     }
 
     // we are not returning a span

@@ -34,6 +34,7 @@ import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
@@ -47,6 +48,7 @@ import org.apache.lucene.search.WildcardQuery;
 import org.apache.lucene.search.spans.SpanNearQuery;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
+import org.apache.lucene.search.spans.SpanOrQuery;
 import org.apache.lucene.store.Directory;
 
 import com.mhs.qsol.QsolParser.Operator;
@@ -133,7 +135,7 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
   private Analyzer analyzer;
   private Locale locale = Locale.getDefault();
   private boolean[] opChain = new boolean[] { false, false, false, false };
-  private int slop = 0;
+  private int slop = 0; // 0 is the default slop for when phrases become SpanNearQuerys
   private Directory didyoumeanIndex = null;
   private DateParser dateParser;
   private List<Operator> orderOfOps = new ArrayList<Operator>();
@@ -363,11 +365,9 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
   }
 
   /**
-   * f0 -> <QUOTED> | <WILDCARD> | <FUZZY> | <SEARCHTOKEN>
+   * f0 -> <MATCHALL> | <QUOTED> | <BOOSTEDQUOTED> | <RANGE> | <WILDCARD> | <FUZZY> | <BOOSTEDSEARCHTOKEN> | <SEARCHTOKEN>
    */
   public Query visit(SearchToken n, Query query) {
-    Query returnQuery = null;
-
     String tokens = null;
     NodeChoice choice = (NodeChoice) n.f0;
 
@@ -376,29 +376,27 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
 
     } else if (choice.which == 1) {
       Matcher m = GET_SLOP.matcher(choice.choice.toString());
-      int holdSlop = 1;
 
       // check for slop
       if (m.matches()) {
         tokens = m.group(1);
-        holdSlop = slop;
+        int holdSlop = slop;
         slop = Integer.parseInt(m.group(2));
+        Query returnQuery = tokenToQuery(tokens);
+        slop = holdSlop;
+        return returnQuery;
       } else {
-        return tokenToQuery(choice.choice.toString());
+        String tokensWithQuotes = choice.choice.toString();
+        tokens = tokensWithQuotes.substring(1, tokensWithQuotes.length()-1);
+        return tokenToQuery(tokens);
       }
-
-      returnQuery = tokenToQuery(tokens);
-      slop = holdSlop;
-
-      return returnQuery;
     } else if (choice.which == 2) {
       Matcher m = GET_SLOP_AND_BOOST.matcher(choice.choice.toString());
-      int holdSlop = 1;
 
       // check for slop
       if (m.matches()) {
         tokens = m.group(1);
-        holdSlop = slop;
+        int holdSlop = slop;
 
         String phraseSlop = m.group(2);
 
@@ -668,6 +666,7 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
 
     CharTermAttribute charTermAtrib = source.getAttribute(CharTermAttribute.class);
     OffsetAttribute offsetAtrib = source.getAttribute(OffsetAttribute.class);
+    PositionIncrementAttribute posIncAtt = source.addAttribute(PositionIncrementAttribute.class);
     
     while (true) {
       try {
@@ -675,6 +674,7 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
           break;
         }
         t = new Token(charTermAtrib.buffer(), 0, charTermAtrib.length(), offsetAtrib.startOffset(), offsetAtrib.endOffset());
+        t.setPositionIncrement(posIncAtt.getPositionIncrement());
       } catch (IOException e) {
         t = null;
       }
@@ -727,20 +727,40 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
 
           return q;
         } else {
-          List<SpanQuery> clauses = new ArrayList<SpanQuery>(v.size());
+            // All the Tokens in each sub-list are positioned at the the same location.
+            ArrayList<ArrayList<Token>> identicallyPositionedTokenLists =
+                    new ArrayList<ArrayList<Token>>();
+            for (int i = 0; i < v.size(); i++) {
+              if ((i == 0) || (v.get(i).getPositionIncrement() > 0)) {
+                identicallyPositionedTokenLists.add(new ArrayList<Token>());
+              }
+              ArrayList<Token> curList =
+                      identicallyPositionedTokenLists.get(identicallyPositionedTokenLists.size()-1);
+              curList.add(v.get(i));
+            }
 
-          for (int i = 0; i < v.size(); i++) {
-            // TODO: handle this?
-            // if (t.getPositionIncrement() == 0) {
-            // }
-            Token t2 = v.get(i);
-            SpanQuery termQuery = new SpanTermQuery(new Term(field, new String(t2.buffer(), 0, t2.length())));
-            termQuery.setBoost(this.boost);
-            clauses.set(i, termQuery);
-          }
+            ArrayList<SpanQuery> spanNearSubclauses = new ArrayList<SpanQuery>();
+            for (int listNum = 0; listNum < identicallyPositionedTokenLists.size(); listNum++) {
+              ArrayList<Token> curTokens = identicallyPositionedTokenLists.get(listNum);
 
-          SpanNearQuery query = new SpanNearQuery((SpanQuery[]) clauses
-              .toArray(new SpanQuery[0]), slop, true);
+              ArrayList<SpanTermQuery> curTermQueries = new ArrayList<SpanTermQuery>();
+              for (int tokenNum = 0; tokenNum < curTokens.size(); tokenNum++) {
+                SpanTermQuery termQuery = new SpanTermQuery(new Term(field, curTokens.get(tokenNum).term()));
+                termQuery.setBoost(this.boost);
+                curTermQueries.add(termQuery);
+              }
+
+              int size = curTermQueries.size();
+              if (size <= 0)
+                continue;
+              else if (size == 1)
+                spanNearSubclauses.add(curTermQueries.get(0));
+              else
+                spanNearSubclauses.add(new SpanOrQuery(curTermQueries.toArray(new SpanQuery[0])));
+            }
+            
+            SpanNearQuery query = new SpanNearQuery((SpanQuery[]) spanNearSubclauses
+                    .toArray(new SpanQuery[0]), slop, true);
 
           return query;
         }
@@ -754,6 +774,7 @@ public class QsolToQueryVisitor extends GJDepthFirst<Query, Query> {
           clauses[i] = spanQuery;
         }
 
+        // Note: There's a bug here (not by me) that where term offsets are not respected.
         SpanNearQuery query = new SpanNearQuery(clauses, slop, true);
 
         return query;
